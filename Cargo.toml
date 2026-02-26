@@ -1,0 +1,33 @@
+[package]
+name = "signal-desktop-only"
+version = "0.1.0"
+edition = "2021"
+description = "Interactive Rust CLI to register Signal via signal-cli Docker and link Signal Desktop"
+readme = "README.md"
+license = "MIT"
+keywords = ["signal", "signal-cli", "docker", "cli"]
+categories = ["command-line-utilities"]
+publish = false
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+dialoguer = "0.11"
+dirs = "5.0"
+image = { version = "=0.25.8", default-features = true, features = ["png"] }
+indicatif = "0.17"
+open = "5.3"
+rand = "0.8"
+rqrr = "0.10.1"
+rxing = { version = "0.8.5", default-features = false, features = ["image", "encoding_rs"] }
+serde_json = "1.0"
+sysinfo = "0.30"
+tempfile = "3.10"
+tao = "0.29"
+thiserror = "2.0"
+which = "6.0"
+wry = "0.44"
+xcap = "0.7"
+
+[dev-dependencies]
+qrcode = "0.14"
