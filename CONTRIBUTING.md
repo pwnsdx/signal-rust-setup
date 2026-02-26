@@ -11,8 +11,9 @@ cargo test
 
 ```bash
 cargo fmt
+cargo clippy --lib --bins -- -D warnings -D clippy::dbg_macro -D clippy::todo -D clippy::unwrap_used -D clippy::expect_used -D clippy::unimplemented -D clippy::panic
 cargo test
-cargo llvm-cov --summary-only --lib --fail-under-lines 95
+cargo llvm-cov --summary-only --lib --ignore-filename-regex '/target/llvm-cov-target/debug/build/.*/out/' --fail-under-lines 95
 ```
 
 ## Guidelines

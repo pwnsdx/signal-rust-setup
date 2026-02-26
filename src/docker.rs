@@ -84,7 +84,7 @@ pub fn try_start_docker() -> bool {
         if open::that("/Applications/Docker.app").is_ok() || open::that("Docker").is_ok() {
             return true;
         }
-        return false;
+        false
     }
 
     #[cfg(target_os = "linux")]
@@ -105,7 +105,7 @@ pub fn try_start_docker() -> bool {
                 }
             }
         }
-        return false;
+        false
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]

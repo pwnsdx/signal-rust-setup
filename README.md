@@ -202,13 +202,14 @@ Format and checks:
 ```bash
 cargo fmt
 cargo check
+cargo clippy --lib --bins -- -D warnings -D clippy::dbg_macro -D clippy::todo -D clippy::unwrap_used -D clippy::expect_used -D clippy::unimplemented -D clippy::panic
 cargo test
 ```
 
 Coverage (line coverage gate at 95%):
 
 ```bash
-cargo llvm-cov --summary-only --lib --fail-under-lines 95
+cargo llvm-cov --summary-only --lib --ignore-filename-regex '/target/llvm-cov-target/debug/build/.*/out/' --fail-under-lines 95
 ```
 
 CI is configured in [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
