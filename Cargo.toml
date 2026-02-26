@@ -31,4 +31,5 @@ wry = "0.44"
 xcap = "0.7"
 
 [dev-dependencies]
+assert_cmd = "2.0"
 qrcode = "0.14"
