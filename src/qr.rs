@@ -1,4 +1,4 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use image::imageops::FilterType;
 use image::{GrayImage, Luma};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -61,22 +61,28 @@ pub fn decode_signal_qr_from_image(path: &Path) -> Result<Option<String>> {
         .to_luma8();
 
     let fast = resize_luma_to_max_dimension(&base, crate::QR_FAST_MAX_DIMENSION);
-    if let Some(uri) = decode_signal_qr_with_rqrr_multipass(&fast) {
+    if let Some(uri) = decode_signal_qr_with_rxing_luma(&fast) {
+        return Ok(Some(uri));
+    }
+    if let Some(uri) = decode_signal_qr_with_rqrr_fastpass(&fast) {
         return Ok(Some(uri));
     }
 
     let pixel_count = (base.width() as u64).saturating_mul(base.height() as u64);
 
     if pixel_count <= crate::QR_RXING_MAX_PIXELS {
-        if let Some(uri) = decode_signal_qr_with_rxing(path)? {
+        if let Some(uri) = decode_signal_qr_with_rxing_luma(&base) {
             return Ok(Some(uri));
         }
         if let Some(uri) = decode_signal_qr_with_rqrr_multipass(&base) {
             return Ok(Some(uri));
         }
     } else {
-        let upscaled_fast = scale_luma_image(&fast, 1.3);
-        if let Some(uri) = decode_signal_qr_with_rqrr_multipass(&upscaled_fast) {
+        let upscaled_fast = scale_luma_image(&fast, 1.15);
+        if let Some(uri) = decode_signal_qr_with_rxing_luma(&upscaled_fast) {
+            return Ok(Some(uri));
+        }
+        if let Some(uri) = decode_signal_qr_with_rqrr_fastpass(&upscaled_fast) {
             return Ok(Some(uri));
         }
     }
@@ -122,27 +128,51 @@ pub fn decode_signal_qr_with_rqrr_multipass(image: &GrayImage) -> Option<String>
     None
 }
 
+#[cfg(not(test))]
+fn decode_signal_qr_with_rqrr_fastpass(image: &GrayImage) -> Option<String> {
+    if let Some(uri) = decode_signal_qr_with_rqrr(image) {
+        return Some(uri);
+    }
+
+    for threshold in [128_u8, 160_u8] {
+        let binary = threshold_luma_image(image, threshold, false);
+        if let Some(uri) = decode_signal_qr_with_rqrr(&binary) {
+            return Some(uri);
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 pub fn decode_signal_qr_with_rqrr_multipass(image: &GrayImage) -> Option<String> {
     decode_signal_qr_with_rqrr(image)
 }
 
 pub fn decode_signal_qr_with_rxing(path: &Path) -> Result<Option<String>> {
-    let path_str = path
-        .to_str()
-        .ok_or_else(|| anyhow!("invalid utf-8 path: {}", path.display()))?;
+    let base = image::open(path)
+        .with_context(|| format!("failed to open image {}", path.display()))?
+        .to_luma8();
+    Ok(decode_signal_qr_with_rxing_luma(&base))
+}
 
-    let decode_result = rxing_helpers::detect_in_file(path_str, Some(BarcodeFormat::QR_CODE));
+fn decode_signal_qr_with_rxing_luma(image: &GrayImage) -> Option<String> {
+    let decode_result = rxing_helpers::detect_in_luma(
+        image.as_raw().clone(),
+        image.width(),
+        image.height(),
+        Some(BarcodeFormat::QR_CODE),
+    );
     let Ok(result) = decode_result else {
-        return Ok(None);
+        return None;
     };
 
     let text = result.getText().trim();
     if text.starts_with("sgnl://linkdevice") {
-        return Ok(Some(text.to_string()));
+        return Some(text.to_string());
     }
 
-    Ok(None)
+    None
 }
 
 pub fn decode_signal_qr_with_rqrr(image: &GrayImage) -> Option<String> {
@@ -184,13 +214,13 @@ pub fn resize_luma_to_max_dimension(image: &GrayImage, max_dimension: u32) -> Gr
 }
 
 pub fn threshold_luma_image(image: &GrayImage, threshold: u8, invert: bool) -> GrayImage {
-    let mut out = image.clone();
+    let mut out = GrayImage::new(image.width(), image.height());
 
-    for pixel in out.pixels_mut() {
+    for (x, y, pixel) in image.enumerate_pixels() {
         let source = pixel[0];
         let bit = if source >= threshold { 255 } else { 0 };
         let value = if invert { 255 - bit } else { bit };
-        *pixel = Luma([value]);
+        out.put_pixel(x, y, Luma([value]));
     }
 
     out

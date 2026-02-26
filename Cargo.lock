@@ -4153,6 +4153,7 @@ dependencies = [
  "dirs",
  "image",
  "indicatif",
+ "libc",
  "open",
  "qrcode",
  "rand 0.8.5",

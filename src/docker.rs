@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use indicatif::{ProgressBar, ProgressStyle};
 use serde_json::Value;
 use std::fs;
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -206,18 +207,29 @@ pub fn run_signal_cli_with_retries(
 }
 
 pub fn verify_code(cfg: &Config, code: &str, pin: Option<&str>) -> Result<()> {
-    let mut args = vec!["verify".to_string(), code.to_string()];
     if let Some(pin_value) = pin {
-        args.push("--pin".to_string());
-        args.push(pin_value.to_string());
+        run_signal_cli_with_stdin_secret(
+            cfg,
+            "verify",
+            "read -r SIGNAL_VERIFY_CODE; read -r SIGNAL_PIN; signal-cli -o json -a \"$SIGNAL_ACCOUNT\" verify \"$SIGNAL_VERIFY_CODE\" --pin \"$SIGNAL_PIN\"",
+            &format!("{code}\n{pin_value}\n"),
+            false,
+        )?;
+    } else {
+        let args = vec!["verify".to_string(), code.to_string()];
+        run_signal_cli(cfg, &args, false)?;
     }
-    run_signal_cli(cfg, &args, false)?;
     Ok(())
 }
 
 pub fn set_registration_lock_pin(cfg: &Config, pin: &str) -> Result<()> {
-    let args = vec!["setPin".to_string(), pin.to_string()];
-    run_signal_cli(cfg, &args, false)?;
+    run_signal_cli_with_stdin_secret(
+        cfg,
+        "setPin",
+        "read -r SIGNAL_PIN; signal-cli -o json -a \"$SIGNAL_ACCOUNT\" setPin \"$SIGNAL_PIN\"",
+        &format!("{pin}\n"),
+        false,
+    )?;
     Ok(())
 }
 
@@ -231,18 +243,9 @@ pub fn run_signal_cli(cfg: &Config, args: &[String], allow_failure: bool) -> Res
     fs::create_dir_all(&cfg.data_dir)
         .with_context(|| format!("failed to create data dir {}", cfg.data_dir.display()))?;
 
-    let volume = format!("{}:/var/lib/signal-cli", cfg.data_dir.display());
     let command_name = args.first().map(String::as_str).unwrap_or("unknown");
-
-    let mut cmd = Command::new("docker");
-    cmd.arg("run")
-        .arg("--rm")
-        .arg("-i")
-        .arg("--volume")
-        .arg(volume)
-        .arg("--tmpfs")
-        .arg("/tmp:exec")
-        .arg(&cfg.image)
+    let mut cmd = base_docker_run_cmd(cfg);
+    cmd.arg(&cfg.image)
         .arg("-o")
         .arg("json")
         .arg("-a")
@@ -255,6 +258,76 @@ pub fn run_signal_cli(cfg: &Config, args: &[String], allow_failure: bool) -> Res
     let output = cmd
         .output()
         .with_context(|| format!("failed to run signal-cli '{command_name}' command"))?;
+    handle_signal_cli_output(command_name, output, allow_failure)
+}
+
+fn run_signal_cli_with_stdin_secret(
+    cfg: &Config,
+    command_name: &str,
+    shell_script: &str,
+    stdin_payload: &str,
+    allow_failure: bool,
+) -> Result<bool> {
+    fs::create_dir_all(&cfg.data_dir)
+        .with_context(|| format!("failed to create data dir {}", cfg.data_dir.display()))?;
+
+    let mut cmd = base_docker_run_cmd(cfg);
+    cmd.arg("--env")
+        .arg(format!("SIGNAL_ACCOUNT={}", cfg.account))
+        .arg("--entrypoint")
+        .arg("sh")
+        .arg(&cfg.image)
+        .arg("-c")
+        .arg(shell_script)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .with_context(|| format!("failed to run signal-cli '{command_name}' command"))?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(stdin_payload.as_bytes())
+            .with_context(|| format!("failed to send secret input to '{command_name}' command"))?;
+    }
+
+    let output = child
+        .wait_with_output()
+        .with_context(|| format!("failed to wait for signal-cli '{command_name}' command"))?;
+    handle_signal_cli_output(command_name, output, allow_failure)
+}
+
+fn base_docker_run_cmd(cfg: &Config) -> Command {
+    let volume = format!("{}:/var/lib/signal-cli", cfg.data_dir.display());
+    let mut cmd = Command::new("docker");
+    cmd.arg("run")
+        .arg("--rm")
+        .arg("-i")
+        .arg("--volume")
+        .arg(volume)
+        .arg("--tmpfs")
+        .arg("/tmp:exec");
+    add_linux_user_mapping(&mut cmd);
+    cmd
+}
+
+#[cfg(target_os = "linux")]
+fn add_linux_user_mapping(cmd: &mut Command) {
+    let uid = unsafe { libc::geteuid() };
+    let gid = unsafe { libc::getegid() };
+    cmd.arg("--user").arg(format!("{uid}:{gid}"));
+}
+
+#[cfg(not(target_os = "linux"))]
+fn add_linux_user_mapping(_cmd: &mut Command) {}
+
+fn handle_signal_cli_output(
+    command_name: &str,
+    output: std::process::Output,
+    allow_failure: bool,
+) -> Result<bool> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 

@@ -174,9 +174,13 @@ fi
 cmd=""
 for arg in "$@"; do
   case "$arg" in
-    register|verify|setPin|listDevices|addDevice|receive|sendContacts)
-      cmd="$arg"
-      ;;
+    *register*) cmd="register" ;;
+    *verify*) cmd="verify" ;;
+    *setPin*) cmd="setPin" ;;
+    *listDevices*) cmd="listDevices" ;;
+    *addDevice*) cmd="addDevice" ;;
+    *receive*) cmd="receive" ;;
+    *sendContacts*) cmd="sendContacts" ;;
   esac
 done
 
@@ -776,9 +780,11 @@ fn registration_and_device_commands_emit_expected_subcommands() {
     let log_content = read_log(&log);
     assert!(log_content.contains("register"));
     assert!(log_content.contains("--voice"));
-    assert!(log_content.contains("verify 123456 --pin 4321"));
+    assert!(log_content.contains("verify \"$SIGNAL_VERIFY_CODE\" --pin \"$SIGNAL_PIN\""));
     assert!(log_content.contains("verify 123456"));
-    assert!(log_content.contains("setPin 12345678901234567890"));
+    assert!(log_content.contains("setPin \"$SIGNAL_PIN\""));
+    assert!(!log_content.contains("12345678901234567890"));
+    assert!(!log_content.contains("--pin 4321"));
     assert!(log_content.contains("listDevices"));
 }
 
