@@ -159,24 +159,8 @@ fn cmd_wizard(cli: &Cli) -> Result<()> {
     let mut token = get_captcha_token_for_wizard(&theme)?;
     println!("Captcha token captured.");
 
-    let modes = [
-        "SMS",
-        "Landline/SIP (SMS attempt, wait 60s, then voice)",
-        "Voice only",
-    ];
-    let mode = Select::with_theme(&theme)
-        .with_prompt("Registration mode")
-        .items(&modes)
-        .default(1)
-        .interact()?;
-
     loop {
-        let registration_result = match mode {
-            0 => register_with_mode(&cfg, &token, false),
-            1 => register_landline(&cfg, &token),
-            2 => register_with_mode(&cfg, &token, true),
-            _ => unreachable!(),
-        };
+        let registration_result = register_with_mode(&cfg, &token, false);
 
         match registration_result {
             Ok(_) => break,

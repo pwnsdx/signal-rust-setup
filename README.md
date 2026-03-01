@@ -58,7 +58,7 @@ The wizard performs:
 
 1. Account input (`+countrycode...`)
 2. Captcha capture
-3. Registration
+3. Registration (SMS mode)
 4. Verification
 5. Registration lock PIN generation + `setPin`
 6. Desktop launch + QR scan + link
